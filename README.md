@@ -98,7 +98,3 @@ uv run pytest -q
 ## Attribution
 
 This project is derived from [Nick McGee's Discord Music Bot](https://github.com/Nick-McGee/discord-bot). Nick McGee created the original Pycord YouTube music bot, queue, voice, and message UI foundation. The extraction baseline is upstream commit `4917444` ("Update requirements", 2023-09-23).
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
