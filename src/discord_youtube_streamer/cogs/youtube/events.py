@@ -8,7 +8,7 @@ class EventBus:
     raised by one guild's queue can never trigger another guild's voice client
     or UI (a module-level subscriber dict would broadcast to every guild)."""
 
-    __slots__ = ('subscribers',)
+    __slots__ = ("subscribers",)
 
     def __init__(self):
         self.subscribers: dict[str, list[Callable]] = {}
@@ -22,11 +22,11 @@ class EventBus:
                 try:
                     loop.create_task(function(*args))
                 except (TypeError, RuntimeError) as error:
-                    logging.error('Unable to create task for %s: %s', function, error)
+                    logging.error("Unable to create task for %s: %s", function, error)
             elif callable(function):
                 try:
                     function(*args)
                 except TypeError as error:
-                    logging.error('Unable to run function for %s: %s', function, error)
+                    logging.error("Unable to run function for %s: %s", function, error)
             else:
-                logging.error('%s not detected to be a valid callable or coroutine', function)
+                logging.error("%s not detected to be a valid callable or coroutine", function)

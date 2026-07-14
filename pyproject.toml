@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "discord-youtube-streamer"
+version = "0.1.0"
+description = "A Pycord cog and standalone bot for streaming YouTube audio"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "John Magnus-Sharpe" },
+]
+dependencies = [
+  "py-cord[voice]~=2.8",
+  "python-dotenv~=1.2",
+  "requests~=2.32",
+  "urlvalidator~=0.1",
+  "yt-dlp~=2026.3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest~=9.1",
+  "pytest-asyncio~=1.4",
+  "ruff~=0.15",
+]
+
+[project.scripts]
+discord-youtube-streamer = "discord_youtube_streamer.bot:main"
+
+[project.urls]
+Repository = "https://github.com/jdmsharpe/discord-youtube-streamer"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["discord_youtube_streamer*"]

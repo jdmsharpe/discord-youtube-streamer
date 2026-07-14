@@ -1,8 +1,12 @@
 .env
+.coverage
 .pytest_cache/
 .ruff_cache/
 .venv/
 .vscode/
 __pycache__/
 *.py[cod]
+*.egg-info/
+build/
+dist/
 tokens.txt
