@@ -49,11 +49,21 @@ class Voice:
         await self.join_voice(voice_channel=voice_channel)
         if self.client and not self.client.is_connected():
             logging.debug("Waiting for voice connection to be ready...")
-            for _ in range(30):
+            # Bound matches py-cord's 60s connect timeout: giving up sooner
+            # strands current_audio with no player on a slow voice handshake
+            for _ in range(300):
                 await sleep(0.2)
+                if self.client is None:
+                    # /reset or queue drain disconnected voice while we slept;
+                    # playback is moot and self.client.is_connected() would raise
+                    logging.debug("Voice client went away while waiting for connection")
+                    return
                 if self.client.is_connected():
                     break
-            if not self.client.is_connected():
+            # None-safe helper: no await separates loop exit from this check
+            # today, but don't let a future yield point turn a mid-wait
+            # disconnect into an AttributeError here
+            if not self.is_connected():
                 logging.error("Voice connection did not become ready in time")
 
     async def check_voice(self, voice_channel: VoiceChannel):
@@ -75,11 +85,13 @@ class Voice:
             if not await to_thread(audio.refresh):
                 logging.error("Unable to refresh %s, skipping to next audio", audio.title)
                 if self.after_function:
-                    self.after_function()
+                    # Identity-guarded: only advances if this dead track is
+                    # still the queue's current — a running player's own
+                    # track-end callback must not advance a second time.
+                    self.after_function(finished=audio)
                 return
 
         audio_source = self._get_audio_source(audio=audio)
-        self.cur_audio = audio
 
         if self.is_playing() or self.is_paused():
             # A paused player still owns the stream — swap the source and
@@ -94,15 +106,25 @@ class Voice:
                 self.client.play(source=audio_source, after=self.after)
             except (TypeError, AttributeError, ClientException, OpusNotLoaded) as error_msg:
                 logging.error("Error playing audio: %s", error_msg)
+                return
+        # Assigned only after the player owns the new source: if the old
+        # player drains mid-retarget, its callback must capture the OLD track
+        # (correctly stale) — assigning earlier made the pending track look
+        # finished and advanced the queue past it
+        self.cur_audio = audio
 
     def after(self, e: Exception) -> None:
         """Track-end callback — runs on the FFmpeg player thread, so queue
         mutation and task creation must be marshalled back to the event loop."""
+        # Pass the finished track along so the queue can ignore this callback
+        # if it was retargeted (skip_to/remove/refresh-failure) while the
+        # player was still draining — advancing then would double-skip.
+        finished = self.cur_audio
         self.cur_audio = None
         if e:
             logging.error("Play error: %s", e)
         if self.after_function:
-            self.bot.loop.call_soon_threadsafe(self.after_function)
+            self.bot.loop.call_soon_threadsafe(self.after_function, False, finished)
 
     def pause_playback(self) -> bool:
         if not self.is_playing() or not self.cur_audio:

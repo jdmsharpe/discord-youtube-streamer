@@ -84,6 +84,8 @@ from discord_youtube_streamer import YouTubeStreamerCog
 bot.add_cog(YouTubeStreamerCog(bot))
 ```
 
+`GUILD_IDS` must be set in the host process environment (or its `.env`) **before importing** the package — the slash commands bind to it at import time, and the cog raises `RuntimeError` at construction if it is empty.
+
 ## Development
 
 ```bash
