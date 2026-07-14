@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "discord-youtube-streamer"
-version = "0.1.0"
-description = "A Pycord cog and standalone bot for streaming YouTube audio"
+version = "1.0.0"
+description = "Discord bot to enable yt-dlp interactions"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
