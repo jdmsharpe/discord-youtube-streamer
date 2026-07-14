@@ -1,0 +1,6 @@
+services:
+  discord-youtube-streamer:
+    build: .
+    env_file:
+      - .env
+    restart: unless-stopped
