@@ -1,6 +1,6 @@
 # Discord YouTube Streamer
 
-A focused Discord voice bot that streams YouTube audio from a URL, search query, or playlist. It uses slash commands, maintains an interactive now-playing message, and keeps playback isolated per Discord server.
+A focused Discord voice bot and reusable Pycord cog that streams YouTube audio from a URL, search query, or playlist. It uses slash commands, maintains an interactive now-playing message, and keeps playback isolated per Discord server.
 
 ## Features
 
@@ -11,6 +11,7 @@ A focused Discord voice bot that streams YouTube audio from a URL, search query,
 - Blocking `yt-dlp` and network work moved off Discord's event loop
 - Automatic refresh of expired YouTube stream URLs
 - YouTube-only URL extraction to avoid fetching arbitrary user-provided URLs
+- Installable `discord_youtube_streamer` package with a public cog interface
 - Docker and local Python workflows
 
 ## Commands
@@ -54,9 +55,25 @@ Python 3.12 and FFmpeg are recommended.
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -e .
 cp .env.example .env
-python src/bot.py
+discord-youtube-streamer
+```
+
+The module entry point is equivalent:
+
+```bash
+python -m discord_youtube_streamer
+```
+
+## Use as a cog
+
+Install the package, then add its public cog to an existing Pycord bot:
+
+```python
+from discord_youtube_streamer import YouTubeStreamerCog
+
+bot.add_cog(YouTubeStreamerCog(bot))
 ```
 
 ## Attribution

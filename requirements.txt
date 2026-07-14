@@ -1,5 +1,0 @@
-py-cord[voice]~=2.8
-python-dotenv~=1.2
-requests~=2.32
-urlvalidator~=0.1
-yt-dlp~=2026.3

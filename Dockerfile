@@ -9,9 +9,8 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y ffmpeg ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
+COPY pyproject.toml README.md ./
 COPY src ./src
+RUN pip install --no-cache-dir .
 
-CMD ["python", "src/bot.py"]
+CMD ["discord-youtube-streamer"]
