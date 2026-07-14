@@ -42,6 +42,67 @@ async def test_refresh_failure_advance_is_identity_guarded() -> None:
 
 
 @pytest.mark.asyncio
+async def test_cur_audio_is_assigned_only_after_source_swap(monkeypatch) -> None:
+    # If the draining player's callback fires mid-retarget, it must capture
+    # the OLD track (stale) — cur_audio may not name the new track until the
+    # player actually owns its source
+    monkeypatch.setattr(Voice, "_get_audio_source", staticmethod(lambda **_kwargs: MagicMock()))
+    voice = make_voice(after_function=MagicMock())
+    old_audio = MagicMock()
+    new_audio = MagicMock()
+    new_audio.is_stale.return_value = False
+    voice.cur_audio = old_audio
+
+    observed_at_swap = []
+
+    class FakeClient:
+        channel = "fake-channel"
+
+        def is_connected(self):
+            return True
+
+        def is_playing(self):
+            return True
+
+        def is_paused(self):
+            return False
+
+        def __setattr__(self, name, value):
+            if name == "source":
+                observed_at_swap.append(voice.cur_audio)
+            object.__setattr__(self, name, value)
+
+    voice.client = FakeClient()
+
+    await voice.stream(new_audio)
+
+    assert observed_at_swap == [old_audio]
+    assert voice.cur_audio is new_audio
+
+
+@pytest.mark.asyncio
+async def test_ensure_connected_aborts_cleanly_when_client_disconnected_mid_poll(
+    monkeypatch,
+) -> None:
+    voice = make_voice()
+    client = MagicMock()
+    client.is_connected.return_value = False
+    voice_channel = MagicMock()
+    voice_channel.connect = AsyncMock(return_value=client)
+
+    async def sleep_then_disconnect(_delay):
+        # /reset during the readiness wait: disconnect_voice() clears the client
+        voice.client = None
+
+    monkeypatch.setattr("discord_youtube_streamer.cogs.youtube.voice.sleep", sleep_then_disconnect)
+
+    # Must return instead of raising AttributeError on self.client.is_connected()
+    await voice._ensure_connected(voice_channel=voice_channel)
+
+    assert voice.client is None
+
+
+@pytest.mark.asyncio
 async def test_ensure_connected_waits_beyond_old_six_second_bound(monkeypatch, caplog) -> None:
     monkeypatch.setattr(
         "discord_youtube_streamer.cogs.youtube.voice.sleep", AsyncMock(return_value=None)

@@ -53,6 +53,11 @@ class Voice:
             # strands current_audio with no player on a slow voice handshake
             for _ in range(300):
                 await sleep(0.2)
+                if self.client is None:
+                    # /reset or queue drain disconnected voice while we slept;
+                    # playback is moot and self.client.is_connected() would raise
+                    logging.debug("Voice client went away while waiting for connection")
+                    return
                 if self.client.is_connected():
                     break
             if not self.client.is_connected():
@@ -84,7 +89,6 @@ class Voice:
                 return
 
         audio_source = self._get_audio_source(audio=audio)
-        self.cur_audio = audio
 
         if self.is_playing() or self.is_paused():
             # A paused player still owns the stream — swap the source and
@@ -99,6 +103,12 @@ class Voice:
                 self.client.play(source=audio_source, after=self.after)
             except (TypeError, AttributeError, ClientException, OpusNotLoaded) as error_msg:
                 logging.error("Error playing audio: %s", error_msg)
+                return
+        # Assigned only after the player owns the new source: if the old
+        # player drains mid-retarget, its callback must capture the OLD track
+        # (correctly stale) — assigning earlier made the pending track look
+        # finished and advanced the queue past it
+        self.cur_audio = audio
 
     def after(self, e: Exception) -> None:
         """Track-end callback — runs on the FFmpeg player thread, so queue
