@@ -49,7 +49,9 @@ class Voice:
         await self.join_voice(voice_channel=voice_channel)
         if self.client and not self.client.is_connected():
             logging.debug("Waiting for voice connection to be ready...")
-            for _ in range(30):
+            # Bound matches py-cord's 60s connect timeout: giving up sooner
+            # strands current_audio with no player on a slow voice handshake
+            for _ in range(300):
                 await sleep(0.2)
                 if self.client.is_connected():
                     break
@@ -75,7 +77,10 @@ class Voice:
             if not await to_thread(audio.refresh):
                 logging.error("Unable to refresh %s, skipping to next audio", audio.title)
                 if self.after_function:
-                    self.after_function()
+                    # Identity-guarded: only advances if this dead track is
+                    # still the queue's current — a running player's own
+                    # track-end callback must not advance a second time.
+                    self.after_function(finished=audio)
                 return
 
         audio_source = self._get_audio_source(audio=audio)
@@ -98,11 +103,15 @@ class Voice:
     def after(self, e: Exception) -> None:
         """Track-end callback — runs on the FFmpeg player thread, so queue
         mutation and task creation must be marshalled back to the event loop."""
+        # Pass the finished track along so the queue can ignore this callback
+        # if it was retargeted (skip_to/remove/refresh-failure) while the
+        # player was still draining — advancing then would double-skip.
+        finished = self.cur_audio
         self.cur_audio = None
         if e:
             logging.error("Play error: %s", e)
         if self.after_function:
-            self.bot.loop.call_soon_threadsafe(self.after_function)
+            self.bot.loop.call_soon_threadsafe(self.after_function, False, finished)
 
     def pause_playback(self) -> bool:
         if not self.is_playing() or not self.cur_audio:

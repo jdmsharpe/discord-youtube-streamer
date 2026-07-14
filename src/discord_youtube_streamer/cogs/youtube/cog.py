@@ -47,7 +47,13 @@ class GuildSession:
             voice=self.voice,
         )
 
-    def change_audio(self, previous: bool = False) -> None:
+    def change_audio(self, previous: bool = False, finished: Audio | None = None) -> None:
+        if finished is not None and self.queue.get_current_audio() is not finished:
+            # Stale track-end callback: the queue was retargeted (skip_to,
+            # remove, refresh-failure advance) while this track was still
+            # playing — advancing again would skip the newly selected track.
+            logging.info("Ignoring stale track-end callback for %s", finished)
+            return
         if previous:
             logging.info("Getting previous audio")
             self.queue.get_previous_audio()
@@ -64,6 +70,15 @@ class YouTubeStreamerCog(commands.Cog):
     __slots__ = "bot", "sessions"
 
     def __init__(self, bot: Bot):
+        # The slash-command decorators bound GUILD_IDS at import time; with an
+        # empty list py-cord registers the commands neither globally nor in any
+        # guild, and the cog loads without error. Fail fast instead — the same
+        # contract validate_required_config() enforces on the standalone path.
+        if not GUILD_IDS:
+            raise RuntimeError(
+                "GUILD_IDS is required; set it (comma-separated Discord server IDs) "
+                "before importing discord_youtube_streamer"
+            )
         self.bot = bot
         self.sessions: dict[int, GuildSession] = {}
 
