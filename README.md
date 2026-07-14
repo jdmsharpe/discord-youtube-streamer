@@ -1,5 +1,13 @@
 # Discord YouTube Streamer
 
+![Hits](https://hitscounter.dev/api/hit?url=https%3A%2F%2Fgithub.com%2Fjdmsharpe%2Fdiscord-youtube-streamer%2F&label=discord-youtube-streamer&icon=github&color=%23198754&message=&style=flat&tz=UTC)
+[![Version](https://img.shields.io/github/v/tag/jdmsharpe/discord-youtube-streamer?sort=semver&label=version)](https://github.com/jdmsharpe/discord-youtube-streamer/tags)
+[![License](https://img.shields.io/github/license/jdmsharpe/discord-youtube-streamer?label=license)](./LICENSE)
+[![CI](https://github.com/jdmsharpe/discord-youtube-streamer/actions/workflows/main.yml/badge.svg)](https://github.com/jdmsharpe/discord-youtube-streamer/actions/workflows/main.yml)
+[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
+
+## Overview
+
 A focused Discord voice bot and reusable Pycord cog that streams YouTube audio from a URL, search query, or playlist. It uses slash commands, maintains an interactive now-playing message, and keeps playback isolated per Discord server.
 
 ## Features
