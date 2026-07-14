@@ -60,7 +60,10 @@ class Voice:
                     return
                 if self.client.is_connected():
                     break
-            if not self.client.is_connected():
+            # None-safe helper: no await separates loop exit from this check
+            # today, but don't let a future yield point turn a mid-wait
+            # disconnect into an AttributeError here
+            if not self.is_connected():
                 logging.error("Voice connection did not become ready in time")
 
     async def check_voice(self, voice_channel: VoiceChannel):
