@@ -1,12 +1,32 @@
+# Ignore environment variable files
 .env
-.coverage
+
+# Ignore VS Code settings
+.vscode/
+
+# Ignore virtual environments
+.venv/
+.venv-wsl/
+venv/
+
+# Ignore Python cache files
+__pycache__/
 .pytest_cache/
 .ruff_cache/
-.venv/
-.vscode/
-__pycache__/
-*.py[cod]
+*.pyc
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Tool/editor artifacts
 *.egg-info/
+.codex/
+.agents/
+.serena/
+
+# Repo-specific
+.coverage
 build/
 dist/
 tokens.txt

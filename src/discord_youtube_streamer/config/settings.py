@@ -1,6 +1,5 @@
 from typing import Final
 
-
 FFMPEG_OPTS: Final[dict] = {
     "before_options": [
         "-reconnect 1",

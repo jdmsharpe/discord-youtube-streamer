@@ -1,15 +1,15 @@
 import logging
-from datetime import datetime, timedelta
-from collections import deque
 from asyncio import AbstractEventLoop
+from collections import deque
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 
+from discord import Member, TextChannel, User, VoiceChannel
 from requests import head
 from requests.exceptions import RequestException
-from discord import TextChannel, Member, User, VoiceChannel
 
-from .events import EventBus
 from .client import REQUEST_TIMEOUT_S, get_audio
+from .events import EventBus
 
 
 @dataclass(slots=True)
@@ -45,9 +45,8 @@ class Audio:
             self.thumbnail = entry["thumbnail"]
             logging.info("Refreshed audio: %s", self.title)
             return True
-        else:
-            logging.error("Unable to refresh audio: %s", self.title)
-            return False
+        logging.error("Unable to refresh audio: %s", self.title)
+        return False
 
     def set_end_time(self, offset: int = 0) -> None:
         self.end_time = datetime.now() + timedelta(seconds=self.length) - timedelta(seconds=offset)
@@ -55,13 +54,13 @@ class Audio:
 
 class AudioQueue:
     __slots__ = (
-        "event_loop",
-        "event_bus",
-        "max_queue_size",
-        "max_previous_queue_size",
-        "queue",
-        "previous_queue",
         "_current_audio",
+        "event_bus",
+        "event_loop",
+        "max_previous_queue_size",
+        "max_queue_size",
+        "previous_queue",
+        "queue",
     )
 
     def __init__(
@@ -178,8 +177,7 @@ class AudioQueue:
             self._current_audio = None
             self.get_next_audio()
             return title
-        else:
-            return None
+        return None
 
     def remove_at(self, position: int) -> str | None:
         """Remove the up-next entry at a 1-based position (as shown in the UI)."""
@@ -238,5 +236,4 @@ class AudioQueue:
         previous_audio = [f"{idx + 1}. {x}" for idx, x in enumerate(self.previous_queue)]
         previous_audio = "\n".join(previous_audio)
 
-        songs = f"Current audio: {self._current_audio}\nNext audio: {next_audio}\nPrevious audio: {previous_audio}"
-        return songs
+        return f"Current audio: {self._current_audio}\nNext audio: {next_audio}\nPrevious audio: {previous_audio}"

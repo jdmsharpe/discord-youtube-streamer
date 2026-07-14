@@ -1,21 +1,20 @@
-from copy import deepcopy
 import logging
+from asyncio import sleep, to_thread
+from collections.abc import Callable
+from copy import deepcopy
 from datetime import datetime
-from typing import Callable
-from asyncio import to_thread, sleep
 
-from discord import Bot, VoiceChannel, FFmpegPCMAudio, PCMVolumeTransformer, utils
+from discord import Bot, FFmpegPCMAudio, PCMVolumeTransformer, VoiceChannel, utils
 from discord.errors import ClientException
 from discord.opus import OpusNotLoaded
-from .models import Audio
-
-from .events import EventBus
 
 from ...config.settings import FFMPEG_OPTS
+from .events import EventBus
+from .models import Audio
 
 
 class Voice:
-    __slots__ = "bot", "after_function", "client", "cur_audio", "paused_time_left"
+    __slots__ = "after_function", "bot", "client", "cur_audio", "paused_time_left"
 
     def __init__(self, bot: Bot, event_bus: EventBus, after_function: Callable | None = None):
         self.bot = bot
@@ -143,11 +142,10 @@ class Voice:
         before_options = " ".join(opts["before_options"])
         options = " ".join(opts["options"])
 
-        audio_source = PCMVolumeTransformer(
+        return PCMVolumeTransformer(
             FFmpegPCMAudio(source=audio.audio_url, before_options=before_options, options=options),
             volume=0.25,
         )
-        return audio_source
 
     async def disconnect_voice(self) -> None:
         try:

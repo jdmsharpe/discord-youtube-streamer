@@ -1,13 +1,13 @@
 import logging
+from collections.abc import Callable
 from datetime import datetime, timedelta
-from typing import Callable
 
-from discord import Interaction, Embed, ButtonStyle, TextChannel
+from discord import ButtonStyle, Embed, Interaction, TextChannel
 from discord.ui import Button, View
 
 from .base_view import UserInterface
-from .models import Audio, AudioQueue
 from .events import EventBus
+from .models import Audio, AudioQueue
 from .voice import Voice
 
 

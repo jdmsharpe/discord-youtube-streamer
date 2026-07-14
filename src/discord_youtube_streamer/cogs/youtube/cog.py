@@ -1,29 +1,28 @@
 import logging
-from asyncio import get_running_loop, all_tasks
+from asyncio import all_tasks, get_running_loop
 
 from discord import (
-    Bot,
     ApplicationContext,
+    Bot,
     ClientException,
+    Colour,
+    Embed,
+    Member,
     TextChannel,
     User,
-    Member,
     VoiceChannel,
-    Embed,
-    Colour,
 )
-from discord.ext import commands
-from discord.commands import slash_command, option
+from discord.commands import option, slash_command
 from discord.errors import HTTPException
+from discord.ext import commands
 
-from .models import Audio, AudioQueue
-from .voice import Voice
-from .views import StreamerUserInterface
+from ...config.auth import GUILD_IDS
+from ...config.settings import DELETE_TIMER
 from .client import get_audio, get_playlist
 from .events import EventBus
-
-from ...config.settings import DELETE_TIMER
-from ...config.auth import GUILD_IDS
+from .models import Audio, AudioQueue
+from .views import StreamerUserInterface
+from .voice import Voice
 
 green = Colour.green()
 red = Colour.red()
@@ -34,7 +33,7 @@ class GuildSession:
     event bus, queue, voice wrapper, and control-panel UI so playback in one
     guild can never drive another guild's session."""
 
-    __slots__ = "guild_id", "event_bus", "queue", "voice", "user_interface"
+    __slots__ = "event_bus", "guild_id", "queue", "user_interface", "voice"
 
     def __init__(self, bot: Bot, guild_id: int):
         self.guild_id = guild_id

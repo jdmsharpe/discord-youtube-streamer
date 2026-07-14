@@ -2,10 +2,9 @@ import logging
 
 from requests import head
 from requests.exceptions import RequestException
-from yt_dlp import YoutubeDL as yt
+from urlvalidator import ValidationError, validate_url
 from yt_dlp import DownloadError
-from urlvalidator import validate_url, ValidationError
-
+from yt_dlp import YoutubeDL as yt
 
 # allowed_extractors keeps yt-dlp's generic extractor out of reach: without it,
 # any http(s) URL passed to /play is fetched server-side (SSRF against localhost

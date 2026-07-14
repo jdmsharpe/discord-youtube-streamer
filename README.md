@@ -4,7 +4,7 @@
 [![Version](https://img.shields.io/github/v/tag/jdmsharpe/discord-youtube-streamer?sort=semver&label=version)](https://github.com/jdmsharpe/discord-youtube-streamer/tags)
 [![License](https://img.shields.io/github/license/jdmsharpe/discord-youtube-streamer?label=license)](./LICENSE)
 [![CI](https://github.com/jdmsharpe/discord-youtube-streamer/actions/workflows/main.yml/badge.svg)](https://github.com/jdmsharpe/discord-youtube-streamer/actions/workflows/main.yml)
-[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
 
 ## Overview
 
@@ -58,7 +58,7 @@ docker compose up --build
 
 ## Run from source
 
-Python 3.12 and FFmpeg are recommended.
+Python 3.11 or newer and FFmpeg are required.
 
 ```bash
 python -m venv .venv
@@ -84,6 +84,21 @@ from discord_youtube_streamer import YouTubeStreamerCog
 bot.add_cog(YouTubeStreamerCog(bot))
 ```
 
+## Development
+
+```bash
+uv sync --extra dev
+uv run ruff check src/ tests/
+uv run pyright src/
+uv run pytest -q
+```
+
+*Run `git config core.hooksPath .githooks` after cloning to enable the pre-commit hook.*
+
 ## Attribution
 
-This project is derived from [Nick McGee's Discord Music Bot](https://github.com/Nick-McGee/discord-bot). Nick McGee created the original Pycord YouTube music bot, queue, voice, and message UI foundation. See [NOTICE.md](NOTICE.md) for the recorded baseline and redistribution note.
+This project is derived from [Nick McGee's Discord Music Bot](https://github.com/Nick-McGee/discord-bot). Nick McGee created the original Pycord YouTube music bot, queue, voice, and message UI foundation. The extraction baseline is upstream commit `4917444` ("Update requirements", 2023-09-23).
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.

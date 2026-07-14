@@ -1,6 +1,7 @@
 import logging
-from typing import Callable
-from asyncio import AbstractEventLoop, iscoroutinefunction
+from asyncio import AbstractEventLoop
+from collections.abc import Callable
+from inspect import iscoroutinefunction
 
 
 class EventBus:
