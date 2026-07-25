@@ -65,7 +65,7 @@ src/
 ## Testing And Patch Targets
 
 - `pytest` runs with `pythonpath = ["src"]`; suite needs no network, ffmpeg, opus, or real tokens.
-- Module-aligned files: `tests/test_auth.py` (guild-id parsing + required-config validation), `tests/test_bot.py` (build_bot registers the cog), `tests/test_events.py` (EventBus isolation), `tests/test_models.py` (AudioQueue display-position semantics), `tests/test_package.py` (lazy export smoke test).
+- Module-aligned files: `tests/test_auth.py` (guild-id parsing + required-config validation), `tests/test_bot.py` (build_bot registers the cog), `tests/test_client.py` (`_is_url` URL-vs-search routing), `tests/test_events.py` (EventBus isolation), `tests/test_models.py` (AudioQueue display-position semantics), `tests/test_package.py` (lazy export smoke test).
 - Env state via `pytest` `monkeypatch`; Discord objects via `unittest.mock.MagicMock`.
 - New tests and patches should target real owners under `discord_youtube_streamer...`.
 
@@ -85,4 +85,4 @@ pytest -q
 - Per-guild isolation: each configured guild gets its own queue, voice connection, event bus, and control-panel message.
 - Blocking `yt-dlp` and network work runs off the Discord event loop (`asyncio.to_thread`); enforced by ruff `ASYNC` rules.
 - Expired YouTube stream URLs are refreshed automatically in `voice.py` before playback resumes.
-- `client.py` restricts extraction to YouTube URLs to avoid fetching arbitrary user-provided URLs.
+- `client.py` restricts extraction to YouTube URLs to avoid fetching arbitrary user-provided URLs. That control is the `allowed_extractors` allowlist in `YTDL_OPTS`, not `_is_url()` — `_is_url()` only picks the `extract_info(query)` vs `ytsearch:` branch. It is a stdlib `urlsplit` check accepting `http`/`https` with a non-empty netloc; anything else (including scheme-less `youtube.com/...`) is treated as a search query.

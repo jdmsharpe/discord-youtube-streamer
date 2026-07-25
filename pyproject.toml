@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "discord-youtube-streamer"
-version = "1.1.0"
+version = "1.2.0"
 description = "Discord bot to enable yt-dlp interactions"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -16,8 +16,10 @@ dependencies = [
   "py-cord[voice]~=2.8",
   "python-dotenv~=1.2",
   "requests~=2.34",
-  "urlvalidator~=0.1",
-  "yt-dlp~=2026.7",
+  # Unbounded floor, not ~=: yt-dlp is CalVer with no meaningful major boundary,
+  # and the Dockerfile pip-installs from this file without uv.lock — a compatible
+  # release clause would pin deployed images to the last 2026 release forever.
+  "yt-dlp>=2026.7.4",
 ]
 
 [project.optional-dependencies]

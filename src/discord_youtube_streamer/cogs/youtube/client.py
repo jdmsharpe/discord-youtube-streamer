@@ -1,8 +1,8 @@
 import logging
+from urllib.parse import urlsplit
 
 from requests import head
 from requests.exceptions import RequestException
-from urlvalidator import ValidationError, validate_url
 from yt_dlp import DownloadError
 from yt_dlp import YoutubeDL as yt
 
@@ -18,6 +18,19 @@ YTDL_OPTS = {
 }
 
 REQUEST_TIMEOUT_S = 10
+
+# Replaces the unmaintained urlvalidator dependency (single release, 2017). The
+# behaviour differs in BOTH directions, deliberately:
+#   narrower on scheme — urlvalidator allowed ftp/ftps too, so "ftp://x.com/a"
+#     was a URL and is now treated as a search query;
+#   broader on host shape — urlvalidator required hostname+TLD, "localhost", or
+#     an IP literal, so "https://randomword" and "http://foo:bar/" were rejected
+#     and fell back to a YouTube search. They now count as URLs and go to
+#     extract_info, where allowed_extractors rejects them, so a mistyped URL
+#     surfaces "no results" instead of silently becoming a search.
+# Neither direction is a security control — allowed_extractors above is what
+# stops arbitrary URLs being fetched.
+URL_SCHEMES = frozenset({"http", "https"})
 
 
 def get_audio(query: str) -> dict | None:
@@ -102,9 +115,16 @@ def _get_entry_from_youtube(query: str) -> dict | None:
 
 def _is_url(query: str) -> bool:
     try:
-        validate_url(query)
-        logging.debug("%s is a URL", query)
-        return True
-    except ValidationError:
+        parts = urlsplit(query)
+    except ValueError:
+        # Only an unparseable bracketed IPv6 literal reaches here; urlsplit does
+        # not validate ports (SplitResult.port would, but is never accessed).
         logging.debug("%s not a URL", query)
         return False
+
+    if parts.scheme in URL_SCHEMES and parts.netloc:
+        logging.debug("%s is a URL", query)
+        return True
+
+    logging.debug("%s not a URL", query)
+    return False
