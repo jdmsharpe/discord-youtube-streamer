@@ -4,7 +4,9 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from discord import Member, TextChannel, User, VoiceChannel
+from discord import Member, User
+from discord.abc import Messageable
+from discord.channel import VocalGuildChannel
 from requests import head
 from requests.exceptions import RequestException
 
@@ -15,8 +17,12 @@ from .events import EventBus
 @dataclass(slots=True)
 class Audio:
     author: Member | User
-    voice_channel: VoiceChannel
-    text_channel: TextChannel
+    # VocalGuildChannel (voice or stage) and Messageable (text, thread, or a
+    # voice channel's text chat) are what py-cord actually hands back from
+    # author.voice.channel and ctx.channel; the narrower VoiceChannel /
+    # TextChannel annotations excluded real invocation contexts.
+    voice_channel: VocalGuildChannel
+    text_channel: Messageable
     audio_url: str
     webpage_url: str
     title: str
@@ -74,9 +80,9 @@ class AudioQueue:
         self.event_bus = event_bus
         self.max_queue_size = max_queue_size
         self.max_previous_queue_size = max_previous_queue_size
-        self.queue = deque()
-        self.previous_queue = deque()
-        self._current_audio = None
+        self.queue: deque[Audio] = deque()
+        self.previous_queue: deque[Audio] = deque()
+        self._current_audio: Audio | None = None
 
     @property
     def current_audio(self) -> Audio | None:
@@ -113,7 +119,7 @@ class AudioQueue:
             logging.info("Retrieved next song: %s", next_audio)
         else:
             if self._current_audio:
-                self._add_to_previous_queue(audio=self.current_audio)
+                self._add_to_previous_queue(audio=self._current_audio)
             self.current_audio = None
             logging.warning("Unable to get next song, queue is empty")
         return next_audio
@@ -138,7 +144,12 @@ class AudioQueue:
         return previous_audio
 
     async def restart_queue(self) -> None:
-        await self.append_left(self._current_audio)
+        # With nothing playing there is no current track to push back onto the
+        # front — the previous queue alone is the restart point. Passing None
+        # here used to fall through to _add_to_queue's isinstance guard and log
+        # "Not an Audio object" on an ordinary restart.
+        if self._current_audio is not None:
+            await self.append_left(self._current_audio)
         self.queue = self.previous_queue + self.queue
         self.previous_queue = deque()
         self.get_next_audio()
@@ -172,12 +183,13 @@ class AudioQueue:
         self._current_audio = None
 
     def remove_current_audio(self) -> str | None:
-        if self.get_current_audio():
-            title = self._current_audio.title
-            self._current_audio = None
-            self.get_next_audio()
-            return title
-        return None
+        current = self._current_audio
+        if current is None:
+            return None
+        title = current.title
+        self._current_audio = None
+        self.get_next_audio()
+        return title
 
     def remove_at(self, position: int) -> str | None:
         """Remove the up-next entry at a 1-based position (as shown in the UI)."""

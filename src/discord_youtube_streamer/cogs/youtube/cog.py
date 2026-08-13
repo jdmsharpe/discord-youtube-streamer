@@ -8,10 +8,10 @@ from discord import (
     Colour,
     Embed,
     Member,
-    TextChannel,
     User,
-    VoiceChannel,
 )
+from discord.abc import Messageable
+from discord.channel import VocalGuildChannel
 from discord.commands import option, slash_command
 from discord.errors import HTTPException
 from discord.ext import commands
@@ -82,10 +82,44 @@ class YouTubeStreamerCog(commands.Cog):
         self.bot = bot
         self.sessions: dict[int, GuildSession] = {}
 
-    def _get_session(self, guild_id: int) -> GuildSession:
+    def _get_session(self, ctx: ApplicationContext) -> GuildSession:
+        guild_id = self._require_guild_id(ctx=ctx)
         if guild_id not in self.sessions:
             self.sessions[guild_id] = GuildSession(bot=self.bot, guild_id=guild_id)
         return self.sessions[guild_id]
+
+    # Every command below is registered with guild_ids=GUILD_IDS and gated by
+    # the defer_and_check_voice hook, so these three invariants already hold by
+    # the time a command body runs. They are re-checked here because that
+    # guarantee lives in decorators and a hook, where no type checker can see
+    # it — and because a raise beats an AttributeError if it ever stops holding.
+    @staticmethod
+    def _require_guild_id(ctx: ApplicationContext) -> int:
+        if ctx.guild_id is None:
+            raise commands.CommandError("This command can only be used in a server")
+        return ctx.guild_id
+
+    @staticmethod
+    def _require_voice_channel(ctx: ApplicationContext) -> VocalGuildChannel:
+        # Only a Member has voice state; ctx.author widens to User off-guild
+        author = ctx.author
+        voice_state = author.voice if isinstance(author, Member) else None
+        if voice_state is None or voice_state.channel is None:
+            raise commands.CommandError("User not connected to a voice channel")
+        return voice_state.channel
+
+    @staticmethod
+    def _require_message_channel(ctx: ApplicationContext) -> Messageable:
+        # ctx.channel spans forum and category channels, which cannot be sent to
+        channel = ctx.channel
+        if not isinstance(channel, Messageable):
+            raise commands.CommandError("This command cannot be used in this channel")
+        return channel
+
+    @property
+    def _bot_name(self) -> str:
+        user = self.bot.user
+        return user.display_name if user is not None else "The bot"
 
     @slash_command(
         name="play",
@@ -95,12 +129,12 @@ class YouTubeStreamerCog(commands.Cog):
     @option("query", description="Search or URL", required=True)
     async def play_command(self, ctx: ApplicationContext, query: str) -> None:
         logging.info("Play command invoked")
-        session = self._get_session(guild_id=ctx.guild_id)
+        session = self._get_session(ctx=ctx)
         audio_title = await self.queue_audio(
             session=session,
             author=ctx.author,
-            voice_channel=ctx.author.voice.channel,
-            text_channel=ctx.channel,
+            voice_channel=self._require_voice_channel(ctx=ctx),
+            text_channel=self._require_message_channel(ctx=ctx),
             query=query,
         )
         if audio_title:
@@ -122,12 +156,12 @@ class YouTubeStreamerCog(commands.Cog):
     @option("query", description="Search or URL", required=True)
     async def play_next_command(self, ctx: ApplicationContext, query: str) -> None:
         logging.info("Play next command invoked")
-        session = self._get_session(guild_id=ctx.guild_id)
+        session = self._get_session(ctx=ctx)
         audio_title = await self.queue_audio(
             session=session,
             author=ctx.author,
-            voice_channel=ctx.author.voice.channel,
-            text_channel=ctx.channel,
+            voice_channel=self._require_voice_channel(ctx=ctx),
+            text_channel=self._require_message_channel(ctx=ctx),
             query=query,
             add_to_start=True,
         )
@@ -152,7 +186,7 @@ class YouTubeStreamerCog(commands.Cog):
     @option("url", description="A playlist URL", required=True)
     async def playlist_command(self, ctx: ApplicationContext, url: str) -> None:
         logging.info("Playlist command invoked")
-        session = self._get_session(guild_id=ctx.guild_id)
+        session = self._get_session(ctx=ctx)
         # Flat extraction is a network round-trip — keep it off the event loop
         playlist = await get_running_loop().run_in_executor(None, get_playlist, url)
 
@@ -174,8 +208,8 @@ class YouTubeStreamerCog(commands.Cog):
             coro=self.queue_playlist(
                 session=session,
                 author=ctx.author,
-                voice_channel=ctx.author.voice.channel,
-                text_channel=ctx.channel,
+                voice_channel=self._require_voice_channel(ctx=ctx),
+                text_channel=self._require_message_channel(ctx=ctx),
                 urls=playlist["urls"],
             ),
             name=session.playlist_task_name,
@@ -186,7 +220,7 @@ class YouTubeStreamerCog(commands.Cog):
     )
     async def pause_command(self, ctx: ApplicationContext) -> None:
         logging.info("Pause command invoked")
-        session = self._get_session(guild_id=ctx.guild_id)
+        session = self._get_session(ctx=ctx)
         if session.voice.pause_playback():
             await session.user_interface.refresh_ui()
             await ctx.respond(
@@ -206,7 +240,7 @@ class YouTubeStreamerCog(commands.Cog):
     @slash_command(name="resume", description="Resume the paused audio", guild_ids=GUILD_IDS)
     async def resume_command(self, ctx: ApplicationContext) -> None:
         logging.info("Resume command invoked")
-        session = self._get_session(guild_id=ctx.guild_id)
+        session = self._get_session(ctx=ctx)
         if session.voice.resume_playback():
             await session.user_interface.refresh_ui()
             await ctx.respond(
@@ -236,7 +270,7 @@ class YouTubeStreamerCog(commands.Cog):
     )
     async def remove_at_command(self, ctx: ApplicationContext, position: int) -> None:
         logging.info("Remove at command invoked")
-        session = self._get_session(guild_id=ctx.guild_id)
+        session = self._get_session(ctx=ctx)
         audio_title = session.queue.remove_at(position=position)
         if audio_title:
             await ctx.respond(
@@ -270,7 +304,7 @@ class YouTubeStreamerCog(commands.Cog):
     )
     async def skip_to_command(self, ctx: ApplicationContext, position: int) -> None:
         logging.info("Skip to command invoked")
-        session = self._get_session(guild_id=ctx.guild_id)
+        session = self._get_session(ctx=ctx)
         audio_title = session.queue.skip_to(position=position)
         if audio_title:
             await ctx.respond(
@@ -294,7 +328,7 @@ class YouTubeStreamerCog(commands.Cog):
     )
     async def restart_queue(self, ctx: ApplicationContext) -> None:
         logging.info("Restart queue command invoked")
-        session = self._get_session(guild_id=ctx.guild_id)
+        session = self._get_session(ctx=ctx)
         await session.queue.restart_queue()
         await ctx.respond(
             embed=Embed(title="Restarted Queue", color=green), delete_after=DELETE_TIMER
@@ -326,12 +360,16 @@ class YouTubeStreamerCog(commands.Cog):
     )
     async def go_to(self, ctx: ApplicationContext, hour: int, minute: int, second: int) -> None:
         logging.info("Go to command invoked")
-        session = self._get_session(guild_id=ctx.guild_id)
-        if session.voice.is_playing():
+        session = self._get_session(ctx=ctx)
+        # Bind the track once: a queue advance between the bounds check and the
+        # seek would re-anchor end_time on a different song. A None here means
+        # playback ended mid-command, which is the "nothing playing" branch.
+        current_audio = session.queue.get_current_audio()
+        if session.voice.is_playing() and current_audio is not None:
             time, description = self._get_time_and_description(
                 hour=hour, minute=minute, second=second
             )
-            if time >= session.queue.get_current_audio().length:
+            if time >= current_audio.length:
                 await ctx.respond(
                     embed=Embed(
                         title="Out of Bounds",
@@ -342,7 +380,7 @@ class YouTubeStreamerCog(commands.Cog):
                 )
             else:
                 session.voice.go_to(time=time)
-                session.queue.get_current_audio().set_end_time(offset=time)
+                current_audio.set_end_time(offset=time)
                 await ctx.respond(
                     embed=Embed(title="Going To", description=description[:-2], color=green),
                     delete_after=DELETE_TIMER,
@@ -358,7 +396,7 @@ class YouTubeStreamerCog(commands.Cog):
     @slash_command(name="clear_queue", description="Clear the up next queue", guild_ids=GUILD_IDS)
     async def clear_up_next_command(self, ctx: ApplicationContext) -> None:
         logging.info("Clear command invoked")
-        session = self._get_session(guild_id=ctx.guild_id)
+        session = self._get_session(ctx=ctx)
         self.cancel_playlist(task_name=session.playlist_task_name)
         session.queue.clear_next_queue()
         await ctx.respond(
@@ -370,7 +408,7 @@ class YouTubeStreamerCog(commands.Cog):
     )
     async def clear_previous_command(self, ctx: ApplicationContext) -> None:
         logging.info("Clear command invoked")
-        session = self._get_session(guild_id=ctx.guild_id)
+        session = self._get_session(ctx=ctx)
         session.queue.clear_previous_queue()
         await ctx.respond(
             embed=Embed(title="Cleared Previous Queue", color=green), delete_after=DELETE_TIMER
@@ -383,7 +421,7 @@ class YouTubeStreamerCog(commands.Cog):
     )
     async def remove_command(self, ctx: ApplicationContext) -> None:
         logging.info("Remove from queue command invoked")
-        session = self._get_session(guild_id=ctx.guild_id)
+        session = self._get_session(ctx=ctx)
         audio_title = session.queue.remove_current_audio()
         if audio_title:
             await ctx.respond(
@@ -409,7 +447,7 @@ class YouTubeStreamerCog(commands.Cog):
     )
     async def reset_command(self, ctx: ApplicationContext) -> None:
         logging.info("Reset command invoked")
-        session = self._get_session(guild_id=ctx.guild_id)
+        session = self._get_session(ctx=ctx)
         self.cancel_playlist(task_name=session.playlist_task_name)
         session.queue.reset_queue()
 
@@ -423,7 +461,7 @@ class YouTubeStreamerCog(commands.Cog):
         await ctx.respond(
             embed=Embed(
                 title="Reset Bot",
-                description=f"**{self.bot.user.display_name}** has been reset",
+                description=f"**{self._bot_name}** has been reset",
                 color=green,
             ),
             delete_after=DELETE_TIMER,
@@ -436,15 +474,17 @@ class YouTubeStreamerCog(commands.Cog):
     )
     async def reconnect_bot(self, ctx: ApplicationContext) -> None:
         logging.info("Reconnect command invoked")
-        session = self._get_session(guild_id=ctx.guild_id)
+        session = self._get_session(ctx=ctx)
+        voice_channel = self._require_voice_channel(ctx=ctx)
+        text_channel = self._require_message_channel(ctx=ctx)
         try:
-            await session.voice.join_voice(voice_channel=ctx.author.voice.channel)
-            await session.user_interface.new_ui(data=ctx.channel)
+            await session.voice.join_voice(voice_channel=voice_channel)
+            await session.user_interface.new_ui(text_channel=text_channel)
             await ctx.respond(
                 embed=Embed(
                     title="Reconnected",
-                    description=f"""**{self.bot.user.display_name}** connected to voice channel **{ctx.author.voice.channel}**
-                                                          and text channel **{ctx.channel}**""",
+                    description=f"""**{self._bot_name}** connected to voice channel **{voice_channel}**
+                                                          and text channel **{text_channel}**""",
                     color=green,
                 ),
                 delete_after=DELETE_TIMER,
@@ -455,7 +495,7 @@ class YouTubeStreamerCog(commands.Cog):
             await ctx.respond(
                 embed=Embed(
                     title="Unable to Connect",
-                    description=f"Error connecting **{self.bot.user.display_name}** to voice",
+                    description=f"Error connecting **{self._bot_name}** to voice",
                     color=red,
                 ),
                 delete_after=DELETE_TIMER,
@@ -487,7 +527,11 @@ class YouTubeStreamerCog(commands.Cog):
     @reconnect_bot.before_invoke
     async def defer_and_check_voice(self, ctx: ApplicationContext) -> None:
         await ctx.defer()
-        if ctx.author and ctx.author.voice is None:
+        # A VoiceState whose channel is None means the user just left voice;
+        # letting that through handed None to join_voice further down.
+        author = ctx.author
+        voice_state = author.voice if isinstance(author, Member) else None
+        if voice_state is None or voice_state.channel is None:
             await ctx.respond(
                 embed=Embed(
                     title="Error", description="You are not connected to a voice channel", color=red
@@ -498,9 +542,9 @@ class YouTubeStreamerCog(commands.Cog):
 
         # While the bot is connected, only users in its voice channel may
         # control playback (stops drive-by skips/resets from other channels)
-        session = self.sessions.get(ctx.guild_id)
+        session = self.sessions.get(self._require_guild_id(ctx=ctx))
         bot_channel = session.voice.current_channel() if session else None
-        if bot_channel is not None and ctx.author.voice.channel != bot_channel:
+        if bot_channel is not None and voice_state.channel != bot_channel:
             await ctx.respond(
                 embed=Embed(
                     title="Error",
@@ -516,8 +560,8 @@ class YouTubeStreamerCog(commands.Cog):
         session: GuildSession,
         query: str,
         author: User | Member,
-        voice_channel: VoiceChannel,
-        text_channel: TextChannel,
+        voice_channel: VocalGuildChannel,
+        text_channel: Messageable,
         add_to_start: bool = False,
     ) -> str | None:
         logging.info("Queuing %s", query)
@@ -563,8 +607,8 @@ class YouTubeStreamerCog(commands.Cog):
         self,
         session: GuildSession,
         author: User | Member,
-        voice_channel: VoiceChannel,
-        text_channel: TextChannel,
+        voice_channel: VocalGuildChannel,
+        text_channel: Messageable,
         urls: list[str],
     ) -> None:
         for url in urls:

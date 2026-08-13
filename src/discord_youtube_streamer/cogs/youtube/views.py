@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta
 
-from discord import ButtonStyle, Embed, Interaction, TextChannel
+from discord import ButtonStyle, Embed, Interaction
 from discord.ui import Button, View
 
 from .base_view import UserInterface
@@ -21,22 +21,30 @@ class StreamerUserInterface(UserInterface):
         self.change_audio_function = change_audio_function
         self.queue = queue
         self.voice = voice
-        event_bus.subscribe(event_type="new_audio", function=self.new_ui)
+        event_bus.subscribe(event_type="new_audio", function=self.on_new_audio)
         event_bus.subscribe(event_type="no_audio", function=self.refresh_ui)
         event_bus.subscribe(event_type="no_audio", function=self.stop_auto_refresh)
         event_bus.subscribe(event_type="queue_update", function=self.refresh_ui)
 
-    async def new_ui(self, data: Audio | TextChannel) -> None:
-        if isinstance(data, Audio):
-            await super().new_ui(text_channel=data.text_channel)
-        else:
-            await super().new_ui(text_channel=data)
+    async def on_new_audio(self, audio: Audio) -> None:
+        """Event-bus handler for "new_audio" — posts the panel in whichever
+        channel queued the track.
+
+        Kept separate from new_ui rather than overriding it with a widened
+        ``Audio | TextChannel`` parameter: that override also renamed the
+        parameter, so any caller using the base class's ``text_channel=``
+        keyword would break on a StreamerUserInterface.
+        """
+        await self.new_ui(text_channel=audio.text_channel)
 
     async def get_embed(self) -> Embed:
-        if self.queue.get_current_audio() is None:
+        # Read the queue once: the auto-refresh loop and a track change can
+        # interleave, and re-reading per field could render a panel that mixes
+        # two tracks' title, thumbnail, and requester.
+        current_audio = self.queue.get_current_audio()
+        if current_audio is None:
             embed = Embed(title="Not Playing")
         else:
-            current_audio = self.queue.get_current_audio()
             embed = Embed(title=current_audio.title)
 
             try:
@@ -83,13 +91,14 @@ class StreamerUserInterface(UserInterface):
         return audios
 
     async def get_view(self) -> View:
+        current_audio = self.queue.get_current_audio()
         if self.queue.get_previous_queue_length() > 0:
             previous_audio_button = Button(style=ButtonStyle.secondary, emoji="⏮")
         else:
             previous_audio_button = Button(disabled=True, style=ButtonStyle.secondary, emoji="⏮")
         previous_audio_button.callback = self.previous_audio_callback
 
-        if self.queue.get_current_audio() is not None:
+        if current_audio is not None:
             pause_button = Button(
                 style=ButtonStyle.secondary, emoji="▶" if self.voice.is_paused() else "⏸"
             )
@@ -97,7 +106,7 @@ class StreamerUserInterface(UserInterface):
             pause_button = Button(disabled=True, style=ButtonStyle.secondary, emoji="⏸")
         pause_button.callback = self.pause_audio_callback
 
-        if self.queue.get_queue_length() > 0 or self.queue.get_current_audio():
+        if self.queue.get_queue_length() > 0 or current_audio:
             next_audio_button = Button(style=ButtonStyle.secondary, emoji="⏭")
         else:
             next_audio_button = Button(disabled=True, style=ButtonStyle.secondary, emoji="⏭")
@@ -105,11 +114,11 @@ class StreamerUserInterface(UserInterface):
 
         view = View(previous_audio_button, pause_button, next_audio_button, timeout=None)
 
-        if self.queue.get_current_audio() is not None:
+        if current_audio is not None:
             go_to_youtube = Button(
                 style=ButtonStyle.url,
                 label="See on YouTube",
-                url=self.queue.get_current_audio().webpage_url,
+                url=current_audio.webpage_url,
             )
             view.add_item(go_to_youtube)
 

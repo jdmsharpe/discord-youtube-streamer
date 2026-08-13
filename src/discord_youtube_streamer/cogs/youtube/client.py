@@ -1,10 +1,14 @@
 import logging
+from typing import Any, cast
 from urllib.parse import urlsplit
 
 from requests import head
 from requests.exceptions import RequestException
-from yt_dlp import DownloadError
 from yt_dlp import YoutubeDL as yt
+
+# yt_dlp re-exports DownloadError at package level but omits it from __all__,
+# so it is not a typed public symbol there; yt_dlp.utils is where it is defined.
+from yt_dlp.utils import DownloadError
 
 # allowed_extractors keeps yt-dlp's generic extractor out of reach: without it,
 # any http(s) URL passed to /play is fetched server-side (SSRF against localhost
@@ -18,6 +22,22 @@ YTDL_OPTS = {
 }
 
 REQUEST_TIMEOUT_S = 10
+
+
+# Two shims for yt-dlp's inline type hints, which are narrower than its runtime
+# contract. YoutubeDL.params is the private _Params TypedDict, which no options
+# dict literal can satisfy, and extract_info is declared to return the private
+# _InfoDict TypedDict — not assignable to dict, and it reports every optional
+# key as possibly-missing even though the callers below already guard for that.
+# Both are documented by yt-dlp as plain option/info dictionaries, so convert
+# once here rather than threading private yt-dlp type names through the module.
+def _ytdl(opts: dict[str, Any]) -> yt:
+    return yt(cast("Any", opts))
+
+
+def _extract(ytdl: yt, query: str) -> dict[str, Any] | None:
+    return cast("dict[str, Any] | None", ytdl.extract_info(query, download=False))
+
 
 # Replaces the unmaintained urlvalidator dependency (single release, 2017). The
 # behaviour differs in BOTH directions, deliberately:
@@ -33,7 +53,7 @@ REQUEST_TIMEOUT_S = 10
 URL_SCHEMES = frozenset({"http", "https"})
 
 
-def get_audio(query: str) -> dict | None:
+def get_audio(query: str) -> dict[str, Any] | None:
     entry = _get_entry_from_youtube(query=query)
     if not entry:
         return None
@@ -58,21 +78,25 @@ def get_audio(query: str) -> dict | None:
         return None
 
 
-def get_playlist(playlist_url: str) -> dict | None:
+def get_playlist(playlist_url: str) -> dict[str, Any] | None:
     """Fetch a playlist's title and entry URLs in a single flat extraction.
 
     Returns {'title': str, 'urls': list[str]} or None. Blocking — run in an
     executor from async code.
     """
     opts = YTDL_OPTS | {"noplaylist": False, "extract_flat": "in_playlist"}
-    with yt(opts) as ytdl:
+    with _ytdl(opts) as ytdl:
         try:
-            info = ytdl.extract_info(playlist_url, download=False)
+            info = _extract(ytdl, playlist_url)
         except DownloadError as download_error:
             logging.error("Error fetching playlist %s: %s", playlist_url, download_error)
             return None
 
-    entries = (info or {}).get("entries") or []
+    if info is None:
+        logging.error("No playlist info returned for %s", playlist_url)
+        return None
+
+    entries = info.get("entries") or []
     urls = [entry["url"] for entry in entries if entry and entry.get("url")]
     if not urls:
         logging.error("No entries found in playlist %s", playlist_url)
@@ -81,19 +105,24 @@ def get_playlist(playlist_url: str) -> dict | None:
     return {"title": info.get("title") or "Playlist", "urls": urls}
 
 
-def _get_entry_from_youtube(query: str) -> dict | None:
+def _get_entry_from_youtube(query: str) -> dict[str, Any] | None:
     tries = 3
 
     while tries > 0:
         tries -= 1
-        with yt(YTDL_OPTS) as ytdl:
+        with _ytdl(YTDL_OPTS) as ytdl:
             try:
                 if _is_url(query):
                     logging.info("Queuing by URL")
-                    return ytdl.extract_info(query, download=False)
+                    return _extract(ytdl, query)
 
                 logging.info("Queuing by search")
-                info = ytdl.extract_info(f"ytsearch:{query}", download=False)
+                info = _extract(ytdl, f"ytsearch:{query}")
+                if info is None:
+                    # Previously reached the same return via a TypeError on
+                    # None["entries"] caught below; make the path explicit
+                    logging.error("No search results returned for %s", query)
+                    return None
                 first_entry = info["entries"][0]
                 status_code = head(first_entry["url"], timeout=REQUEST_TIMEOUT_S).status_code
                 logging.info("Query status code: %s", status_code)

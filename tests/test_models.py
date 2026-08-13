@@ -38,3 +38,21 @@ async def test_queue_remove_and_skip_by_display_position() -> None:
     assert queue.skip_to(1) == "third"
     assert queue.get_current_audio() is third
     assert list(queue.previous_queue) == [first]
+
+
+@pytest.mark.asyncio
+async def test_restart_queue_with_nothing_playing_does_not_requeue_none(caplog) -> None:
+    # restart_queue used to hand _current_audio straight to append_left, so
+    # restarting with no current track pushed None into _add_to_queue and hit
+    # its "Not an Audio object" guard on an otherwise ordinary restart
+    queue = AudioQueue(event_loop=asyncio.get_running_loop(), event_bus=EventBus())
+    first = make_audio("first")
+    await queue.append(first)
+    queue.get_next_audio()  # drains to empty, leaving no current audio
+    assert queue.get_current_audio() is None
+
+    with caplog.at_level("ERROR"):
+        await queue.restart_queue()
+
+    assert "Not an Audio object" not in caplog.text
+    assert queue.get_current_audio() is first

@@ -2,11 +2,19 @@ import logging
 from asyncio import sleep, to_thread
 from collections.abc import Callable
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from discord import Bot, FFmpegPCMAudio, PCMVolumeTransformer, VoiceChannel, utils
+from discord import Bot, FFmpegPCMAudio, PCMVolumeTransformer, utils
+from discord.channel import VocalGuildChannel
 from discord.errors import ClientException
 from discord.opus import OpusNotLoaded
+
+# discord.VoiceClient is a deprecated alias since py-cord 2.7 (removed in 3.0);
+# discord.voice is the supported path. This is also the concrete class that
+# channel.connect() instantiates when cls is left at its MISSING default —
+# discord.VoiceProtocol, the annotated return type, is the abstract base and
+# defines none of play/pause/resume/source.
+from discord.voice import VoiceClient
 
 from ...config.settings import FFMPEG_OPTS
 from .events import EventBus
@@ -19,24 +27,28 @@ class Voice:
     def __init__(self, bot: Bot, event_bus: EventBus, after_function: Callable | None = None):
         self.bot = bot
         self.after_function = after_function
-        self.client = None
-        self.cur_audio = None
-        self.paused_time_left = None
+        self.client: VoiceClient | None = None
+        self.cur_audio: Audio | None = None
+        self.paused_time_left: timedelta | None = None
         event_bus.subscribe(event_type="new_audio", function=self.stream)
         event_bus.subscribe(event_type="no_audio", function=self.disconnect_voice)
 
-    async def join_voice(self, voice_channel: VoiceChannel) -> None:
+    async def join_voice(self, voice_channel: VocalGuildChannel) -> None:
         try:
             # Capture the returned client: bot.voice_clients[0] would grab an
             # arbitrary guild's session once more than one guild is connected.
-            self.client = await voice_channel.connect()
+            # cls is passed explicitly only to pin the return type — VoiceClient
+            # is exactly what connect() substitutes for its MISSING default.
+            self.client = await voice_channel.connect(cls=VoiceClient)
             logging.debug("Connected to new voice channel: %s", voice_channel)
         except ClientException:
-            # Already connected in this guild — reuse that client and move it
+            # Already connected in this guild — reuse that client and move it.
+            # bot.voice_clients is list[VoiceProtocol]; anything that is not a
+            # full VoiceClient cannot drive playback, so treat it as unusable.
             existing = utils.get(self.bot.voice_clients, guild=voice_channel.guild)
-            if existing:
+            if isinstance(existing, VoiceClient):
                 self.client = existing
-                await self.client.move_to(voice_channel)
+                await existing.move_to(voice_channel)
                 logging.debug("Moved to new voice channel: %s", voice_channel)
             else:
                 logging.warning(
@@ -44,7 +56,7 @@ class Voice:
                     voice_channel.guild,
                 )
 
-    async def _ensure_connected(self, voice_channel: VoiceChannel) -> None:
+    async def _ensure_connected(self, voice_channel: VocalGuildChannel) -> None:
         """Join voice and wait until the connection is fully established."""
         await self.join_voice(voice_channel=voice_channel)
         if self.client and not self.client.is_connected():
@@ -66,7 +78,7 @@ class Voice:
             if not self.is_connected():
                 logging.error("Voice connection did not become ready in time")
 
-    async def check_voice(self, voice_channel: VoiceChannel):
+    async def check_voice(self, voice_channel: VocalGuildChannel):
         if self.client and self.client.is_connected():
             logging.debug("Remaining in current channel: %s", self.client.channel)
         else:
@@ -93,17 +105,26 @@ class Voice:
 
         audio_source = self._get_audio_source(audio=audio)
 
-        if self.is_playing() or self.is_paused():
+        # Bind once rather than re-reading self.client per branch: the staleness
+        # probe and refresh above are awaits, so /reset or a queue drain can
+        # clear self.client between the is_connected() check and here, and every
+        # branch below must act on the same client instance.
+        client = self.client
+        if client is None:
+            logging.error("Cannot stream audio: voice client went away before playback")
+            return
+
+        if client.is_playing() or client.is_paused():
             # A paused player still owns the stream — swap the source and
             # resume rather than calling play(), which would spawn a second
             # player thread on top of the paused one
-            self.client.source = audio_source
-            if self.is_paused():
+            client.source = audio_source
+            if client.is_paused():
                 self.paused_time_left = None
-                self.client.resume()
+                client.resume()
         else:
             try:
-                self.client.play(source=audio_source, after=self.after)
+                client.play(source=audio_source, after=self.after)
             except (TypeError, AttributeError, ClientException, OpusNotLoaded) as error_msg:
                 logging.error("Error playing audio: %s", error_msg)
                 return
@@ -113,9 +134,13 @@ class Voice:
         # finished and advanced the queue past it
         self.cur_audio = audio
 
-    def after(self, e: Exception) -> None:
+    def after(self, e: Exception | None) -> None:
         """Track-end callback — runs on the FFmpeg player thread, so queue
-        mutation and task creation must be marshalled back to the event loop."""
+        mutation and task creation must be marshalled back to the event loop.
+
+        py-cord passes None on a clean drain and the exception on a player
+        error, so e is genuinely optional — the old ``Exception`` annotation
+        contradicted both the ``if e:`` guard below and the test suite."""
         # Pass the finished track along so the queue can ignore this callback
         # if it was retargeted (skip_to/remove/refresh-failure) while the
         # player was still draining — advancing then would double-skip.
@@ -127,29 +152,32 @@ class Voice:
             self.bot.loop.call_soon_threadsafe(self.after_function, False, finished)
 
     def pause_playback(self) -> bool:
-        if not self.is_playing() or not self.cur_audio:
+        client = self.client
+        if client is None or not client.is_playing() or not self.cur_audio:
             return False
         # Freeze the remaining time so the UI countdown can hold steady and
         # end_time can be re-anchored on resume
         self.paused_time_left = self.cur_audio.end_time - datetime.now()
-        self.client.pause()
+        client.pause()
         return True
 
     def resume_playback(self) -> bool:
-        if not self.is_paused():
+        client = self.client
+        if client is None or not client.is_paused():
             return False
         if self.cur_audio and self.paused_time_left is not None:
             self.cur_audio.end_time = datetime.now() + self.paused_time_left
         self.paused_time_left = None
-        self.client.resume()
+        client.resume()
         return True
 
     def go_to(self, time: int) -> None:
-        if self.is_playing() and self.cur_audio:
+        client = self.client
+        if client is not None and client.is_playing() and self.cur_audio:
             audio_source = self._get_audio_source(
                 audio=self.cur_audio, extra_before_options=[f"-ss {time}"]
             )
-            self.client.source = audio_source
+            client.source = audio_source
 
     @staticmethod
     def _get_audio_source(
@@ -170,21 +198,37 @@ class Voice:
         )
 
     async def disconnect_voice(self) -> None:
-        try:
-            await self.client.disconnect(force=True)
-        except (AttributeError, TypeError) as missing_client:
-            logging.warning("No voice client connected to stop: %s", missing_client)
+        client = self.client
+        if client is None:
+            # Fires on every queue drain that ends with voice already gone
+            logging.warning("No voice client connected to disconnect")
+        else:
+            try:
+                await client.disconnect(force=True)
+            except (AttributeError, TypeError) as disconnect_error:
+                logging.warning("Unable to disconnect voice client: %s", disconnect_error)
         self.client = None
         self.paused_time_left = None
 
     def stop_voice(self) -> None:
+        client = self.client
+        if client is None:
+            logging.warning("No voice client connected to stop")
+            return
         try:
-            self.client.stop()
-        except (AttributeError, TypeError) as missing_client:
-            logging.warning("No voice client connected to stop: %s", missing_client)
+            client.stop()
+        except (AttributeError, TypeError) as stop_error:
+            logging.warning("Unable to stop voice client: %s", stop_error)
 
-    def current_channel(self) -> VoiceChannel | None:
-        return self.client.channel if self.is_connected() else None
+    def current_channel(self) -> VocalGuildChannel | None:
+        client = self.client
+        if client is None or not client.is_connected():
+            return None
+        # VoiceClient.channel is declared as the broad abc.Connectable, but
+        # py-cord only ever binds a voice/stage channel there (its own code
+        # annotates it VocalGuildChannel). Narrow rather than cast.
+        channel = client.channel
+        return channel if isinstance(channel, VocalGuildChannel) else None
 
     def is_connected(self) -> bool:
         return self.client is not None and self.client.is_connected()

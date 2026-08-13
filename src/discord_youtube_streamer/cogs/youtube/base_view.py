@@ -2,7 +2,8 @@ import logging
 from abc import ABC, abstractmethod
 from asyncio import Lock
 
-from discord import Bot, Embed, Guild, TextChannel
+from discord import Bot, Embed, Guild
+from discord.abc import Messageable
 from discord.errors import HTTPException, NotFound
 from discord.ext import tasks
 from discord.ui import View
@@ -32,7 +33,10 @@ class UserInterface(ABC):
     def restart_auto_refresh(self) -> None:
         self._auto_refresh_ui.restart()
 
-    async def new_ui(self, text_channel: TextChannel) -> None:
+    async def new_ui(self, text_channel: Messageable | None) -> None:
+        # Messageable, not TextChannel: a slash command is just as validly
+        # invoked from a Thread or a voice channel's text chat, and the UI is
+        # only ever posted with .send() — the one method they all share.
         self.start_auto_refresh()
         if text_channel is None:
             logging.warning("Invalid text channel, attempting refresh")
@@ -79,8 +83,12 @@ class UserInterface(ABC):
                 self.current_ui = None
 
     async def delete_ui(
-        self, bot: Bot, guild: Guild, ignore_msg_ids: set[int | None] | None = None
+        self, bot: Bot, guild: Guild | None, ignore_msg_ids: set[int | None] | None = None
     ) -> None:
+        # bot, guild and ignore_msg_ids are vestigial: this used to sweep every
+        # bot message in the guild and now deletes only the tracked panel (see
+        # below). guild is Optional because ApplicationContext.guild is, and
+        # nothing here dereferences it. Removing all three is a follow-up.
         self.stop_auto_refresh()
 
         async with self.lock:
