@@ -16,7 +16,9 @@ uv run discord-youtube-streamer       # or: python -m discord_youtube_streamer, 
 - `config/auth.py` calls `load_dotenv()` at import time. Tests that control env state must monkeypatch (`monkeypatch.setattr("dotenv.load_dotenv", lambda *_, **__: None)` if a stray `.env` could interfere).
 - FFmpeg and libopus are **runtime-only** dependencies (playback). Imports and the test suite need neither — py-cord binds natives lazily at playback time.
 - **Attribution:** derived from Nick McGee's Discord Music Bot (upstream baseline commit `4917444`, recorded in README Attribution). MIT-licensed since 2026-07 per John's public-distribution decision; keep the Attribution section intact when editing the README.
-- py-cord 2.8.0 caps at Python `<3.15`; do not extend the CI matrix past 3.14.
+- py-cord caps at Python `<3.15` (still true at 2.8.1); do not extend the CI matrix past 3.14.
+- **Channel types come from py-cord as `VocalGuildChannel` and `Messageable`, not `VoiceChannel`/`TextChannel`.** `author.voice.channel` can be a stage channel and `ctx.channel` can be a thread or a voice channel's built-in text chat, so the narrower annotations excluded real invocation contexts. `Audio` uses the wider types deliberately — don't "tighten" them back.
+- **yt-dlp is untyped at the boundary**, so `client.py` funnels every call through the `_ytdl`/`_extract` `cast` helpers and treats a `None` result as a real outcome (log + return `None`), not an impossible one.
 
 ## Environment Variables
 
@@ -65,7 +67,7 @@ src/
 ## Testing And Patch Targets
 
 - `pytest` runs with `pythonpath = ["src"]`; suite needs no network, ffmpeg, opus, or real tokens.
-- Module-aligned files: `tests/test_auth.py` (guild-id parsing + required-config validation), `tests/test_bot.py` (build_bot registers the cog), `tests/test_client.py` (`_is_url` URL-vs-search routing), `tests/test_events.py` (EventBus isolation), `tests/test_models.py` (AudioQueue display-position semantics), `tests/test_package.py` (lazy export smoke test).
+- Module-aligned files: `tests/test_auth.py` (guild-id parsing + required-config validation), `tests/test_bot.py` (build_bot registers the cog), `tests/test_client.py` (`_is_url` URL-vs-search routing), `tests/test_events.py` (EventBus isolation), `tests/test_models.py` (AudioQueue display-position semantics), `tests/test_package.py` (lazy export smoke test), `tests/test_cog.py`, `tests/test_voice.py`, and `tests/test_views.py` (button-view behavior).
 - Env state via `pytest` `monkeypatch`; Discord objects via `unittest.mock.MagicMock`.
 - New tests and patches should target real owners under `discord_youtube_streamer...`.
 
