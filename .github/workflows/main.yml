@@ -80,6 +80,11 @@ jobs:
       - name: Run Docker container to execute tests
         run: docker run --rm discord-youtube-streamer-test:latest
 
+      # yt-dlp[deno] drops the Deno binary into the image's scripts dir; prove it
+      # landed and runs against the slim image's libc, not just that pip resolved it.
+      - name: Verify yt-dlp's JS runtime is installed in the image
+        run: docker run --rm discord-youtube-streamer-test:latest deno --version
+
   release-image:
     name: Build and push release image
     if: github.event_name == 'push'

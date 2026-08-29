@@ -62,9 +62,11 @@ cp .env.example .env
 docker compose up --build
 ```
 
+The image bundles FFmpeg and, through the `yt-dlp[deno]` extra, the Deno JavaScript runtime that yt-dlp uses for YouTube extraction (`linux/amd64` and `linux/arm64`) — there is nothing else to install.
+
 ## Run from source
 
-Python 3.11 or newer and FFmpeg are required.
+Python 3.11 or newer and FFmpeg are required. yt-dlp's JavaScript runtime (Deno) is installed with the package via the `yt-dlp[deno]` extra, so it needs no separate install.
 
 ```bash
 python -m venv .venv
