@@ -29,6 +29,7 @@ uv run discord-youtube-streamer       # or: python -m discord_youtube_streamer, 
 | --- | --- | --- |
 | `BOT_TOKEN` | Yes | Discord bot token |
 | `GUILD_IDS` | Yes | Comma-separated Discord server IDs (empty is a startup error) |
+| `LOG_LEVEL` | No | Python logging level name (default: `INFO`; read by `logging_setup.py`) |
 
 ## Supported Entry Points
 
@@ -78,10 +79,10 @@ src/
 ## Validation Commands
 
 ```bash
-ruff check src/ tests/
-ruff format src/ tests/
-pyright src/
-pytest -q
+uv run ruff check src/ tests/
+uv run ruff format src/ tests/
+uv run pyright src/
+uv run pytest -q
 ```
 
 - The repo pre-commit hook (`.githooks/pre-commit`) runs `ruff format` (auto-applied + re-staged), then `ruff check` (blocking), then `pyright` and `pytest --collect-only` as warning-only smoke tests. Resolves tools from `.venv/bin` or `.venv/Scripts` first, then `PATH`.
